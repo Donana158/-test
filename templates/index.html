@@ -1,0 +1,2087 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知識圖譜編輯平台</title>
+    <link rel="icon" type="image/x-icon" href="/static/MIAT.ico">
+    <!-- 引入 Vis Network 套件，用於繪製知識圖譜 -->
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/vis-network/styles/vis-network.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #e9ecef;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #0066cc, #0156a5); /* 改變漸層角度與顏色，讓背景更有層次感 */
+            width: 85%; 
+            margin-bottom: 20px;
+            color: #f0f0f0; /* 使用稍微柔和的字體顏色 */
+            padding: 15px 20px; /* 增加內距，讓內容不會太擠 */
+            display: flex;
+            align-items: center;
+            justify-content: center; /* 水平置中 */
+            border-bottom: 1px solid #004080; /* 增加下邊框，突顯分區效果 */
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.3); /* 增加陰影的模糊程度和深度 */
+            border-radius: 5px; /* 增加圓角，讓整體更柔和 */
+        }
+
+        .header h1 {
+            font-size: 1.8rem; /* 調整標題字體大小，突出重要性 */
+            font-weight: bold; /* 加粗字體 */
+            text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.4); /* 增加文字陰影，提高視覺層次 */
+            margin: 0; /* 去除標題預設外距 */
+        }
+
+
+        .container {
+            max-width: 400px;
+            margin: auto;
+            text-align: center;
+        }
+
+        .file-upload {
+            width: 20%; 
+            height: 30%; 
+            border: 3px dashed #025bb9;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            color: #007bff;
+            transition: background-color 0.3s;
+        }
+
+        .file-upload:hover {
+            background-color: #f0f8ff;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .btn {
+            padding: 50px 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .btn:hover {
+            background-color: #0056b3;
+        }
+
+        #progress-container {
+            margin-top: 20px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            overflow: hidden;
+            height: 20px;
+            width: 100%;
+            display: none;
+        }
+
+        #progress-bar {
+            height: 100%;
+            width: 0%;
+            background-color: #007bff;
+            transition: width 0.4s;
+        }
+
+        #progress-message {
+            margin-top: 10px;
+            font-size: 14px;
+            color: gray;
+        }
+
+        #status p {
+            font-size: 16px;
+            margin-top: 10px;
+        }
+
+        #status p.success {
+            color: green;
+        }
+
+        #status p.error {
+            color: red;
+        }
+    
+        #network {
+            width: 70%;
+            height: 100vh;
+            border: 1px solid #ced4da;
+            float: right;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+            border-radius: 8px;
+        }
+    
+        #sidebar {
+            width: 28%;
+            float: left;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+            height: calc(100vh - 40px);
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+
+        .panel-style {
+            display: none;
+            margin-top: 20px;
+            border: 1px solid #6c757d;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+            padding: 20px;
+        }
+
+        .panel-title {
+            margin-bottom: 20px;
+            color: #495057;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .label-style {
+            font-size: 14px;
+            font-weight: bold;
+            color: #495057;
+            display: block;
+            margin-bottom: 10px;
+        }
+
+        .dropdown {
+            width: 100%;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ced4da;
+            background-color: #f8f9fa;
+            font-size: 14px;
+        }
+
+        .dynamic-fields {
+            margin-bottom: 20px;
+        }
+
+        h3 {
+            color: #495057;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+    
+        .button {
+            background-color: #007bff; /* 柔和的藍色 */
+            color: #ffffff; /* 白色文字 */
+            border: 1px solid #2980b9; /* 深藍色邊框，增加層次感 */
+            padding: 8px 12px; /* 調整按鈕的高度和內邊距 */
+            margin: 6px 0; /* 增加上下間距 */
+            cursor: pointer;
+            border-radius: 5px; /* 稍微增加圓角 */
+            width: 90%; /* 調整按鈕寬度，更均勻 */
+            font-size: 16px; /* 字體大小不變 */
+            font-weight: 500; /* 增加文字字重 */
+            text-align: center; /* 確保文字居中 */
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* 添加輕微陰影 */
+            transition: background-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .button:hover {
+            background-color: #0985d8; /* 按下時的深藍色 */
+            border-color: #1656a0; /* 對應 hover 的深綠邊框 */
+            transform: translateY(-2px); /* 輕微提升效果 */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15); /* 加強陰影效果 */
+        }
+
+        .button:active {
+            background-color: #2980b9; /* 按下時的深藍色 */
+            border-color: #1e6e95; /* 深化邊框顏色 */
+            transform: translateY(0); /* 移除上升效果 */
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* 恢復初始陰影 */
+        }
+
+        .expert-button {
+            background-color: #007bff; /* 柔和的藍色背景 */
+            color: #d60202; /* 紅色文字 */
+            font-weight: 900; /* 粗體文字 */
+            border: 1px solid #0056b3; /* 深藍色邊框，增加層次感 */
+            padding: 8px 12px; /* 調整按鈕的高度和內邊距 */
+            margin: 6px 0; /* 增加上下間距 */
+            cursor: pointer;
+            border-radius: 5px; /* 稍微增加圓角 */
+            width: 90%; /* 調整按鈕寬度，更均勻 */
+            font-size: 20px; /* 字體大小不變 */
+            text-align: center; /* 確保文字居中 */
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* 添加輕微陰影 */
+            transition: background-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .expert-button:hover {
+            background-color: #0056b3; /* 深藍色背景 */
+            border-color: #003d80; /* 更深的藍色邊框 */
+            transform: translateY(-2px); /* 輕微提升效果 */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15); /* 加強陰影效果 */
+        }
+
+        .expert-button:active {
+            background-color: #003d80; /* 按下時更深的藍色背景 */
+            border-color: #002a5c; /* 深化邊框顏色 */
+            transform: translateY(0); /* 移除上升效果 */
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* 恢復初始陰影 */
+        }
+
+        .input-group {
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start; /* 將輸入框和按鈕靠左 */
+        }
+
+        .input-group label {
+            flex: 1;
+            color: #495057;
+            font-size: 16px;
+        }
+
+        .input-group input[type="text"] {
+            flex: 2;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ced4da;
+            transition: border-color 0.3s ease;
+            width: 150px; /* 調整輸入框寬度 */
+            margin-right: 10px; /* 增加輸入框和按鈕的間距 */
+        }
+
+        .input-group input[type="text"]:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+
+        .relation-list {
+            margin-top: 20px;
+        }
+    
+        table {
+            width: 100%;
+            max-width: 100%;
+            border-collapse: collapse;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            table-layout: fixed;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+    
+        table, th, td {
+            border: 1px solid #dee2e6;
+        }
+    
+        th, td {
+            padding: 12px;
+            text-align: left;
+            word-wrap: break-word;
+        }
+    
+        th {
+            background-color: #f8f9fa;
+            color: #343a40;
+        }
+    
+        td input[type="text"] {
+            width: calc(100% - 40px);
+            border: 1px solid #ced4da;
+            background-color: #ffffff;
+            padding: 8px;
+            margin-right: 10px;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+        }
+    
+        td input[type="text"]:focus {
+            outline: none;
+            background-color: #e9ecef;
+        }
+    
+        td button {
+            color: white;
+            border: none;
+            padding: 8px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+            margin-left: 5px;
+            width: auto;
+            height: 30px;
+        }
+    
+        .btn-blue-small {
+            background-color: #007bff;
+        }
+
+    
+        .add-button, .remove-button {
+            padding: 10px 15px; /* 增加內邊距，讓按鈕更大更易點擊 */
+            cursor: pointer;
+            border-radius: 6px; /* 稍微增加按鈕圓角 */
+            font-size: 15px; /* 字體稍微增大，提升易讀性 */
+            margin: 8px; /* 增加按鈕之間的間距 */
+            font-weight: 600; /* 增強文字的粗細 */
+            color: white; /* 保持字體顏色為白色 */
+            border: 2px solid transparent; /* 增加邊框，便於 hover 效果 */
+            transition: all 0.3s ease; /* 平滑過渡效果 */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* 添加輕微的陰影 */
+        }
+
+        .add-button {
+            background: linear-gradient(135deg, #28a745, #218838); /* 添加綠色漸變背景 */
+        }
+
+        .add-button:hover {
+            background: linear-gradient(135deg, #218838, #1e7e34); /* 深色漸變效果 */
+            transform: translateY(-2px) scale(1.02); /* 放大並稍微上移 */
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.2); /* 增強 hover 的陰影效果 */
+        }
+        /* 新增點擊時的彈回效果 */
+        .add-button:active {
+            transform: translateY(2px) scale(0.98); /* 按下時縮小並稍微下移 */
+            box-shadow: 0 3px 5px rgba(0, 0, 0, 0.15); /* 減弱陰影 */
+        }       
+
+        .remove-button {
+            background: linear-gradient(135deg, #dc3545, #c82333); /* 添加紅色漸變背景 */
+        }
+
+        .remove-button:hover {
+            background: linear-gradient(135deg, #c82333, #a71d2a); /* 深色漸變效果 */
+            transform: translateY(-2px) scale(1.02); /* 放大並稍微上移 */
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.2); /* 增強 hover 的陰影效果 */
+        }
+
+        .remove-button:active {
+            transform: translateY(1px) scale(0.98); /* 點擊時縮小並下移 */
+            background: linear-gradient(135deg, #a71d2a, #8b1b22); /* 更深的紅色背景 */
+        }
+
+    
+        .remove-button {
+            background-color: #dc3545;
+        }
+    
+        .remove-button:hover {
+            background-color: #c82333;
+        }
+    
+        .section {
+            margin-bottom: 20px;
+        }
+    
+        .dropdown {
+            width: 70%;
+            padding: 10px;
+            font-size: 15px;
+            border-radius: 5px;
+            border: 1px solid #ced4da;
+            margin-top: 10px;
+            margin-bottom: 20px;
+            background-color: #ffffff;
+            color: #495057;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        #show-button {
+            font-size: 18px; /* 按鈕字體大小 */
+            padding: 6px 10px; /* 調整按鈕的內邊距 */
+            height: 40px; /* 自動調整高度 */
+            width: auto; /* 自動調整寬度 */
+            border-radius: 5px; /* 圓角設計 */
+            background-color: #f5aa31; /* 橙色背景 */
+            color: white; /* 按鈕文字顏色 */
+            border: none; /* 去掉邊框 */
+            cursor: pointer; /* 鼠標樣式 */
+            transition: background-color 0.3s ease, transform 0.3s ease; /* 動態效果 */
+            float: right; /* 浮動定位向右 */
+            margin-right: 10px; /* 增加按鈕與右邊的間距 */
+        }
+
+        #import-button {
+            font-size: 18px; /* 按鈕字體大小 */
+            padding: 6px 10px; /* 調整按鈕的內邊距 */
+            height: 40px; /* 自動調整高度 */
+            width: auto; /* 自動調整寬度 */
+            border-radius: 5px; /* 圓角設計 */
+            background-color: #28a745; /* 綠色背景 */
+            color: white; /* 按鈕文字顏色 */
+            border: none; /* 去掉邊框 */
+            cursor: pointer; /* 鼠標樣式 */
+            transition: background-color 0.3s ease, transform 0.3s ease; /* 動態效果 */
+        }
+
+        #show-button:hover {
+            background-color: #e28e06; /* Hover 深橙色 */
+            transform: translateY(-2px) scale(1.02); /* 放大並稍微上移 */
+        }
+
+        #import-button:hover {
+            background-color: #0e8157; /* Hover 深綠色 */
+            transform: translateY(-2px) scale(1.02); /* 放大並稍微上移 */
+        }
+
+        #show-button:active {
+            background-color: #c87f1b; /* Active 深橙色 */
+            transform: translateY(1px); /* 點擊時按鈕微微下移 */
+        }
+
+        #import-button:active {
+            background-color: #3e9474; /* Active 深綠色 */
+            transform: translateY(1px); /* 點擊時按鈕微微下移 */
+        }
+
+        h2 {
+            display: flex;
+            align-items: center; /* 垂直居中對齊 */
+            gap: 10px; /* 標題與按鈕之間的間距 */
+            font-size: 24px; /* 標題字體大小 */
+            margin-bottom: 15px; /* 與下方內容的距離 */
+        }
+
+        .delete-section {
+            position: absolute; /* 定位至左側操作面板的右上角 */
+            top: 10px; /* 與面板頂部保持距離 */
+            right: 10px; /* 與面板右邊緣保持距離 */
+            padding: 8px;
+            border: 1px solid #dc3545; /* 紅色邊框 */
+            background-color: #f8d7da; /* 淡粉色背景 */
+            border-radius: 6px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(220, 53, 69, 0.15); /* 輕微陰影 */
+            z-index: 10; /* 確保在其他按鈕之上 */
+        }
+
+        .delete-section h4 {
+            font-size: 14px; /* 縮小提示文字大小 */
+            color: #721c24; /* 深紅提示文字 */
+            margin: 0 0 5px;
+        }
+
+        .delete-button {
+            padding: 8px 12px;
+            background-color:#c82333;
+            color: #ffffff;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .delete-button:hover {
+            background-color:#c01325;
+            transform: translateY(-1px) scale(1.01); /* 放大並稍微上移 */
+        }
+
+        .delete-button:active {
+            background-color:#e2041a;
+        }
+
+        .delete-all-button {
+            padding: 8px 12px;
+            background-color:#c82333;
+            color: #ffffff;
+            font-size: 16px; /* 按鈕字體大小 */
+            height: 40px; /* 自動調整高度 */
+            width: auto; /* 自動調整寬度 */
+            border-radius: 5px; /* 圓角設計 */
+            border: none; /* 去掉邊框 */
+            cursor: pointer; /* 鼠標樣式 */
+            transition: background-color 0.3s ease, transform 0.3s ease; /* 動態效果 */
+        }
+
+        .delete-all-button:hover {
+            background-color:#c01325;
+            transform: translateY(-2px) scale(1.02); /* 放大並稍微上移 */
+        }
+
+        .delete-all-button:active {
+            background-color:#e2041a;
+            transform: translateY(-2px) scale(1.02); /* 放大並稍微上移 */
+        }
+
+
+        /* 通用容器樣式 */
+        .node-properties-container,
+        .node-labels-container,
+        .relations-container {
+            margin-top: 20px;
+            border: 1px solid #6c757d;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+            padding: 20px;
+        }
+
+        /* 標題樣式 */
+        .node-properties-title,
+        .node-labels-title,
+        .relations-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #343a40;
+            margin-bottom: 15px;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        /* 表格樣式 */
+        .node-properties-table,
+        .node-labels-table,
+        .relations-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .node-properties-table th,
+        .node-labels-table th,
+        .relations-table th {
+            background-color: #6c757d;
+            color: #ffffff;
+            padding: 10px;
+            text-align: left;
+            font-weight: bold;
+        }
+
+        .node-properties-table td,
+        .node-labels-table td,
+        .relations-table td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+            color: #495057;
+        }
+
+        .node-properties-table td.property-name,
+        .node-labels-table td.label-name,
+        .relations-table td.relation-node {
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        .node-properties-table td.property-value input,
+        .relations-table td.relation-label input {
+            width: calc(100% - 20px);
+            padding: 8px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .node-properties-table td.property-value input:focus,
+        .relations-table td.relation-label input:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+        }
+
+        /* 按鈕樣式 */
+        .update-button {
+            padding: 8px 12px;
+            background-color: #28a745;
+            color: #ffffff;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .update-button:hover {
+            background-color: #218838;
+            transform: translateY(-1px) scale(1.01); /* 放大並稍微上移 */
+        }
+
+        .update-button:active {
+            background-color: #1e7e34;
+            transform: translateY(-1px) scale(1.01); /* 放大並稍微上移 */
+        }
+
+        /* 關係 ID 容器樣式 */
+        .edge-id-container {
+            margin-top: 20px;
+            font-size: 16px;
+            font-weight: bold;
+            color: #343a40;
+        }
+
+        /* 關係屬性容器樣式 */
+        .edge-properties-container,
+        .edge-label-container {
+            margin-top: 20px;
+            border: 1px solid #6c757d;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+            padding: 20px;
+        }
+
+        /* 標題樣式 */
+        .edge-properties-title,
+        .edge-label-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #495057;
+            text-align: center;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+        }
+
+        /* 表格樣式 */
+        .edge-properties-table,
+        .edge-label-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .edge-properties-table th,
+        .edge-label-table th {
+            background-color: #6c757d;
+            color: #ffffff;
+            padding: 10px;
+            text-align: left;
+            font-weight: bold;
+        }
+
+        .edge-properties-table td,
+        .edge-label-table td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+            color: #495057;
+        }
+
+        /* 禁止編輯輸入框樣式 */
+        .edge-label-table input[readonly] {
+            background-color: #e9ecef;
+            border: none;
+            font-weight: bold;
+            color: #6c757d;
+            text-align: center;
+            width: 100%;
+        }
+
+        /* 按鈕樣式 */
+        .update-button {
+            padding: 8px 12px;
+            background-color: #28a745;
+            color: #ffffff;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .update-button:hover {
+            background-color: #218838;
+        }
+
+        .update-button:active {
+            background-color: #1e7e34;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e0e0e0;
+            border-radius: 10px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .progress {
+            width: 0;
+            height: 100%;
+            background-color: #007bff;
+            transition: width 0.3s ease;
+        }
+
+        .message {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #333;
+        }
+
+        strong {
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+    </style>
+    
+</head>
+
+<body>
+    <div id="sidebar">
+
+        <div class="header">
+            <h1>專 家 教 材 編 輯 平 台</h1>
+        </div>
+        <div>
+        <label for="fileInput" class="file-upload">點擊此處上傳檔案</label>
+                <input type="file" id="fileInput" />
+                    <div id="status"></div>
+                        <div id="progress-container">
+                            <div id="progress-bar"></div>
+                        </div>    
+        </div>
+        <div id="progress-message"></div>
+        <div id="file-name" style="margin-top: 10px; font-weight: bold;"></div>
+        <h2>
+            <button id="import-button" class="import-button" onclick="uploadFile()">匯入文本資料</button>            
+            <button id="show-button" class="show-button" onclick="showAllKG()">顯示知識圖譜</button>
+        </h2>
+        
+        <!-- 主要面板 -->
+        <div id="operation-panel">
+            
+            <div class="delete-section">
+                <h4>⚠️ 清空資料</h4>
+                <button class="delete-all-button" onclick="deleteAllKG()">刪除</button>
+            </div> 
+
+            <button class="button" onclick="showPanel('create-panel')">新增</button>
+            <button class="button" onclick="showPanel('delete-panel')">刪除</button>
+            <button class="button" onclick="showPanel('query-panel')">查詢</button>       
+            <button class="expert-button" onclick="showPanel('expert-panel')">專家編輯</button>
+        </div>        
+
+        <!-- 新增面板 -->
+        <div id="create-panel" class="panel-style">
+            <h3 class="panel-title">選擇新增類型：</h3>
+            <div class="section">
+                <label for="add-type" class="label-style"></label>
+                <select id="add-type" class="dropdown" onchange="toggleAddTypeFields()">
+                    <option value="" disabled selected>請選擇新增類型</option>
+                    <option value="singleNode">新增<新節點></option>
+                    <option value="existingRelation">新增<新關係></option>
+                    <option value="newNodeRelationExisting">新增<新節點>與<新關係>到<尾節點></option>
+                    <option value="existingNodeRelationNew">新增<頭節點>與<新關係>到<新節點></option>
+                    <option value="newNodeRelationNew">新增<新節點>與<新關係>到<新節點></option>
+                </select>
+            </div>
+            <div id="dynamic-fields" class="dynamic-fields_">
+                <!-- 根據選擇的新增類型動態生成輸入欄位 -->
+            </div>
+            <button class="button" onclick="submitAddRequest()">確認新增</button>
+        </div>
+        
+        <!-- 刪除面板 -->
+        <div id="delete-panel" class="panel-style">
+            <h3>刪除節點或關係</h3>
+            <div class="input-group">
+                <label for="deleteItemId">ID：</label>
+                <input type="text" id="deleteItemId" placeholder="輸入節點或關係的 ID">
+            </div>
+            <div class="input-group">
+                <label>選擇類型：</label>
+                <div>
+                    <input type="radio" id="deleteNode" name="deleteType" value="node" checked>
+                    <label for="deleteNode">刪除節點</label>
+                </div>
+                <div>
+                    <input type="radio" id="deleteRelationship" name="deleteType" value="relationship">
+                    <label for="deleteRelationship">刪除關係</label>
+                </div>
+            </div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="button" onclick="deleteItem()">確認刪除</button>
+            </div>
+        </div>        
+                
+        <!-- 查詢面板 -->
+        <div id="query-panel" class="panel-style">
+            <h3>查詢</h3>
+            <div class="input-group">
+                <label for="queryByName">節點名稱：</label>
+                <input type="text" id="queryByName" placeholder="輸入節點名稱">
+                <button class="add-button" onclick="queryByName()">查詢</button>
+            </div>        
+            <div class="input-group">
+                <label for="queryByRelationshipName">關係名稱：</label>
+                <input type="text" id="queryByRelationshipName" placeholder="輸入關係名稱">
+                <button class="add-button" onclick="queryByRelationshipName()">查詢</button>
+            </div>
+
+        </div>
+        
+        <!-- 專家編輯面板 -->
+        <div id="expert-panel" class="panel-style">
+            <h3>專家編輯</h3>
+            <div class="input-group" style="display: flex; flex-direction: column; gap: 8px;">
+                <textarea 
+                    id="expert_content" 
+                    placeholder="輸入200字內的要求" 
+                    rows="4" 
+                    maxlength="200" 
+                    style="resize: vertical; max-height: 200px; min-height: 100px; font-size: 16px; width: 100%;"
+                    oninput="countCharacters(this)"
+                ></textarea>
+                <!-- 將字數統計顯示在輸入框下方 -->
+                <div id="char_count_container" style="align-self: flex-end; font-size: 14px; color: #555;">
+                    <span id="char_count">0</span>/200 字             
+                    <button class="add-button" style="align-self: flex-end;" onclick="expertContent()">進行編輯</button>
+                </div>
+            </div>
+            <!-- 顯示執行描述 -->
+            <div id="description-container" style="margin-top: 5px; font-size: 14px; color: #fa0404;">
+                <!-- 動態描述將插入此處 -->
+            </div>
+        </div>
+ 
+        <div id="node-properties"></div>
+        <div class="relation-list" id="relation-list-incoming"></div>
+        <div class="relation-list" id="relation-list-outgoing"></div>
+    </div>
+
+    <div id="network"></div>
+
+    <script>
+
+        document.getElementById('network').addEventListener('click', function() {
+            // 當點擊右側的知識圖譜區域時，隱藏左側所有資料面板
+            const panels = ['create-panel', 'delete-panel', 'query-panel', 'expert-panel'];
+            panels.forEach(id => {
+                const panel = document.getElementById(id);
+                if (panel) panel.style.display = 'none';
+            });
+        });
+
+        const container = document.getElementById('network');
+        const sidebar = document.getElementById('node-properties');
+        const relationListIncoming = document.getElementById('relation-list-incoming');
+        const relationListOutgoing = document.getElementById('relation-list-outgoing');
+
+        let network;
+        let nodes;
+        let edges;
+
+        const fileInput = document.getElementById("fileInput");
+        const fileNameDisplay = document.getElementById("file-name");
+
+        // 確認是否上傳檔案
+        fileInput.addEventListener("change", function () {
+            // 確認是否有選取檔案
+            if (fileInput.files && fileInput.files.length > 0) {
+                const fileName = fileInput.files[0].name; // 取得檔案名稱
+                fileNameDisplay.textContent = `已選取檔案：${fileName}`; // 顯示檔案名稱
+            } else {
+                fileNameDisplay.textContent = ""; // 清空檔案名稱
+            }
+        });
+
+        // 上傳txt檔案
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            const statusDiv = document.getElementById('status');
+            const progressBar = document.getElementById('progress-bar');
+            const progressContainer = document.getElementById('progress-container');
+            const progressMessage = document.getElementById('progress-message');
+
+            statusDiv.innerHTML = ''; // 清空之前的狀態
+            progressContainer.style.display = 'none'; // 隱藏進度條
+            progressBar.style.width = '0%'; // 重置進度條
+            progressMessage.innerText = ''; // 清空提示訊息
+
+            if (!file) {
+                alert('請選擇txt.檔案!!!');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            progressContainer.style.display = 'block'; // 顯示進度條
+            progressMessage.innerText = '正在上傳檔案...';
+
+            try {
+                const response = await fetch('/import_text', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const data = await response.json();
+                if (data.status === 'success') {
+                    statusDiv.innerHTML = `<p class="success">${data.message}</p>`;
+                    progressBar.style.width = '100%';
+                    progressMessage.innerText = '知識圖譜建置完成！';
+                    refreshGraph();
+                } else {
+                    statusDiv.innerHTML = `<p class="error">匯入失敗: ${data.message}</p>`;
+                    progressMessage.innerText = '匯入過程中出現錯誤！';
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<p class="error">匯入過程出錯: ${error.message}</p>`;
+                progressMessage.innerText = '無法連接伺服器或其他錯誤。';
+            }
+        }
+
+        // 顯示整個 KG 的內容
+        function showAllKG() {   
+            refreshGraph();       
+        }
+
+        // 清空所有資料功能
+        function deleteAllKG() {
+            if (!confirm("確定要清空所有資料嗎？此操作無法復原！")) return;
+            fetch('/delete_all_kg', { method: 'DELETE' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('已成功刪除所有資料！');
+                    refreshGraph(); // 刷新圖譜
+                } else {
+                    alert(`刪除失敗: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                alert(`刪除過程出錯: ${error.message}`);
+            });
+        }
+
+                // 切換不同新增類型顯示對應的輸入框
+                function toggleAddTypeFields() {
+                    const type = document.getElementById("add-type").value;
+                    const dynamicFields = document.getElementById("dynamic-fields");
+                    dynamicFields.innerHTML = ''; // 清空動態欄位
+
+                    if (type === '') return; // 未選擇類型時不顯示任何內容
+
+                    if (type === "singleNode") {
+                        dynamicFields.innerHTML = `
+                            <h3>新增新節點</h3>
+                            <button class="add-button" onclick="addLabelField('single-node-labels')">+ 節點標籤</button>
+                            <div id="single-node-labels"></div>
+                            <button class="add-button" onclick="addAttributeField('single-node-attributes')">+ 節點屬性</button>
+                            <div id="single-node-attributes"></div>
+                        `;
+                    } else if (type === "existingRelation") {
+                        dynamicFields.innerHTML = `
+                            <h3>新增新關係:頭尾節點已存在</h3>
+                            <div class="input-group">
+                                <label for="head-node-id">頭節點 ID：</label>
+                                <input type="text" id="head-node-id" placeholder="輸入頭節點 ID">
+                            </div>
+                            <div class="input-group">
+                                <label for="tail-node-id">尾節點 ID：</label>
+                                <input type="text" id="tail-node-id" placeholder="輸入尾節點 ID">
+                            </div>
+                            <button class="add-button" onclick="addLabelField('existing-relation-labels')">+ 關係類型</button>
+                            <div id="existing-relation-labels"></div>
+                            <button class="add-button" onclick="addAttributeField('existing-relation-attributes')">+ 關係屬性</button>
+                            <div id="existing-relation-attributes"></div>
+                        `;
+                    } else if (type === "newNodeRelationExisting") {
+                        dynamicFields.innerHTML = `
+                            <h3>新節點=>新關係=>尾節點</h3>
+                            <div class="input-group">
+                                <label for="existing-node-id">尾節點 ID：</label>
+                                <input type="text" id="existing-node-id" placeholder="輸入現有節點 ID">
+                            </div>
+                            <h4>新增新節點</h4>
+                            <button class="add-button" onclick="addLabelField('new-node-labels')">+ 節點標籤</button>
+                            <div id="new-node-labels"></div>
+                            <button class="add-button" onclick="addAttributeField('new-node-attributes')">+ 節點屬性</button>
+                            <div id="new-node-attributes"></div>
+                            <h4>新增新關係</h4>
+                            <button class="add-button" onclick="addLabelField('new-relation-existing-labels')">+ 關係類型</button>
+                            <div id="new-relation-existing-labels"></div>
+                            <button class="add-button" onclick="addAttributeField('new-relation-existing-attributes')">+ 關係屬性</button>
+                            <div id="new-relation-existing-attributes"></div>
+                        `;
+                    } else if (type === "existingNodeRelationNew") {
+                        dynamicFields.innerHTML = `
+                            <h3>頭節點=>新關係=>新節點</h3>
+                            <div class="input-group">
+                                <label for="existing-node-id-new">頭節點 ID：</label>
+                                <input type="text" id="existing-node-id-new" placeholder="輸入現有節點 ID">
+                            </div>
+                            <h4>新增新節點</h4>
+                            <button class="add-button" onclick="addLabelField('new-relation-node-labels')">+ 節點標籤</button>
+                            <div id="new-relation-node-labels"></div>
+                            <button class="add-button" onclick="addAttributeField('new-relation-node-attributes')">+ 節點屬性</button>
+                            <div id="new-relation-node-attributes"></div>
+                            <h4>新增新關係</h4>
+                            <button class="add-button" onclick="addLabelField('existing-relation-new-labels')">+ 關係類型</button>
+                            <div id="existing-relation-new-labels"></div>
+                            <button class="add-button" onclick="addAttributeField('existing-relation-new-attributes')">+ 關係屬性</button>
+                            <div id="existing-relation-new-attributes"></div>
+                        `;
+                    } else if (type === "newNodeRelationNew") {
+                        dynamicFields.innerHTML = `
+                            <h3>新節點=>新關係=>新節點</h3>
+                            <h4>新增頭節點</h4>
+                            <button class="add-button" onclick="addLabelField('new-head-labels')">+ 頭節點標籤</button>
+                            <div id="new-head-labels"></div>
+                            <button class="add-button" onclick="addAttributeField('new-head-attributes')">+ 頭節點屬性</button>
+                            <div id="new-head-attributes"></div>
+                            <h4>新增尾節點</h4>
+                            <button class="add-button" onclick="addLabelField('new-tail-labels')">+ 尾節點標籤</button>
+                            <div id="new-tail-labels"></div>
+                            <button class="add-button" onclick="addAttributeField('new-tail-attributes')">+ 尾節點屬性</button>
+                            <div id="new-tail-attributes"></div>
+                            <h4>新增新關係</h4>
+                            <button class="add-button" onclick="addLabelField('new-relation-new-labels')">+ 關係類型</button>
+                            <div id="new-relation-new-labels"></div>
+                            <button class="add-button" onclick="addAttributeField('new-relation-new-attributes')">+ 關係屬性</button>
+                            <div id="new-relation-new-attributes"></div>
+                        `;
+                    }
+                }
+
+                function addLabelField(containerId) {
+                    const container = document.getElementById(containerId);
+                    const labelContainer = document.createElement("div");
+                    labelContainer.className = "input-group";
+
+                    const labelInput = document.createElement("input");
+                    labelInput.type = "text";
+                    labelInput.placeholder = "內容";
+
+                    const removeButton = document.createElement("button");
+                    removeButton.className = "remove-button";
+                    removeButton.textContent = "—";
+                    removeButton.onclick = () => container.removeChild(labelContainer);
+
+                    labelContainer.appendChild(labelInput);
+                    labelContainer.appendChild(removeButton);
+                    container.appendChild(labelContainer);
+                }
+
+                function addAttributeField(containerId) {
+                    const container = document.getElementById(containerId);
+                    const attributeContainer = document.createElement("div");
+                    attributeContainer.className = "input-group";
+
+                    const nameInput = document.createElement("input");
+                    nameInput.type = "text";
+                    
+                    // 確定是否是第一個屬性
+                    const existingAttributes = container.querySelectorAll(".input-group");
+                    if (existingAttributes.length === 0) {
+                        nameInput.value = "name"; // 預設第一個屬性名稱為 name
+                        nameInput.readOnly = true; // 第一個屬性不可編輯
+                    } else {
+                        nameInput.placeholder = "屬性名稱";
+                    }
+
+                    const valueInput = document.createElement("input");
+                    valueInput.type = "text";
+                    valueInput.placeholder = "屬性內容";
+
+                    const removeButton = document.createElement("button");
+                    removeButton.className = "remove-button";
+                    removeButton.textContent = "—";
+                    removeButton.onclick = () => container.removeChild(attributeContainer);
+
+                    attributeContainer.appendChild(nameInput);
+                    attributeContainer.appendChild(valueInput);
+                    attributeContainer.appendChild(removeButton);
+                    container.appendChild(attributeContainer);
+                }
+
+                function collectLabels(containerId) {
+                    const labels = [];
+                    document.querySelectorAll(`#${containerId} input`).forEach(input => {
+                        if (input.value.trim() !== '') labels.push(input.value.trim());
+                    });
+                    return labels;
+                }
+
+                function collectAttributes(containerId) {
+                    const attributes = {};
+                    document.querySelectorAll(`#${containerId} .input-group`).forEach(group => {
+                        const nameInput = group.querySelector('input[placeholder="屬性名稱"]');
+                        const valueInput = group.querySelector('input[placeholder="屬性內容"]');
+
+                        const name = nameInput ? nameInput.value.trim() : "name"; // 確保第一個屬性名稱正確
+                        const value = valueInput ? valueInput.value.trim() : "";
+
+                        if (name) attributes[name] = value; // 避免空名稱屬性
+                    });
+                    return attributes;
+                }
+
+                function submitAddRequest() {
+                    const type = document.getElementById("add-type").value;
+                    let data = { add_type: type };
+
+                    if (!type) {
+                        alert("請選擇新增類型！");
+                        return;
+                    }
+
+                    if (type === "singleNode") {
+                        data.labels = collectLabels("single-node-labels");
+                        data.properties = collectAttributes("single-node-attributes");
+                    } else if (type === "existingRelation") {
+                        data.head_id = document.getElementById("head-node-id").value.trim();
+                        data.tail_id = document.getElementById("tail-node-id").value.trim();
+                        data.labels = collectLabels("existing-relation-labels"); 
+                        data.properties = collectAttributes("existing-relation-attributes"); // 確保多屬性
+                        if (!data.head_id || !data.tail_id) {
+                            alert("請輸入頭節點和尾節點的 ID！");
+                            return;
+                        }
+                        if (data.labels.length !== 1) {
+                            alert("關係（邊）只能有一個類型！");
+                            return;
+                        }
+                    } else if (type === "newNodeRelationExisting") {
+                        data.existing_node_id = document.getElementById("existing-node-id").value.trim();
+                        data.new_node_labels = collectLabels("new-node-labels");
+                        data.new_node_properties = collectAttributes("new-node-attributes");
+                        data.relation_labels = collectLabels("new-relation-existing-labels");
+                        data.relation_properties = collectAttributes("new-relation-existing-attributes");
+                        if (!data.existing_node_id) {
+                            alert("請輸入現有節點的 ID！");
+                            return;
+                        }
+                        if (data.relation_labels.length !== 1) {
+                            alert("關係（邊）只能有一個類型！");
+                            return;
+                        }
+                    } else if (type === "existingNodeRelationNew") {
+                        data.existing_node_id = document.getElementById("existing-node-id-new").value.trim();
+                        data.new_node_labels = collectLabels("new-relation-node-labels");
+                        data.new_node_properties = collectAttributes("new-relation-node-attributes");
+                        data.relation_labels = collectLabels("existing-relation-new-labels");
+                        data.relation_properties = collectAttributes("existing-relation-new-attributes");
+                        if (!data.existing_node_id) {
+                            alert("請輸入現有節點的 ID！");
+                            return;
+                        }
+                        if (data.relation_labels.length !== 1) {
+                            alert("關係（邊）只能有一個類型！");
+                            return;
+                        }
+                    } else if (type === "newNodeRelationNew") {
+                        data.head_labels = collectLabels("new-head-labels");
+                        data.head_properties = collectAttributes("new-head-attributes");
+                        data.tail_labels = collectLabels("new-tail-labels");
+                        data.tail_properties = collectAttributes("new-tail-attributes");
+                        data.relation_labels = collectLabels("new-relation-new-labels");
+                        data.relation_properties = collectAttributes("new-relation-new-attributes");
+                        if (data.relation_labels.length !== 1) {
+                            alert("關係（邊）只能有一個類型！");
+                            return;
+                        }
+                    }
+
+                    fetch("/add_node_with_relationship", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(data)
+                    })
+                        .then((response) => response.json())
+                        .then((result) => {
+                            if (result.status === "success") {
+                                alert("新增成功！");
+                                refreshGraph();
+                            } else {
+                                alert("新增失敗: " + result.message);
+                            }
+                        })
+                        .catch((error) => {
+                            alert(`新增請求失敗: ${error.message}`);
+                        });
+                }
+
+            
+        // function clearInputFields() {
+        //     document.querySelectorAll("input[type='text']").forEach((input) => (input.value = ""));
+        //     document.querySelectorAll("div[id$='labels'], div[id$='attributes']").forEach((div) => (div.innerHTML = ""));
+        // }
+
+        function showPanel(panelId) {
+            // 先隱藏所有面板
+            const panels = ['create-panel', 'delete-panel', 'query-panel', 'expert-panel'];
+            panels.forEach(id => {
+                const panel = document.getElementById(id);
+                if (panel) panel.style.display = 'none';
+            });
+            clearAll()
+            // 顯示對應面板
+            const targetPanel = document.getElementById(panelId);
+            if (targetPanel) targetPanel.style.display = 'block';
+        }
+
+        function refreshGraph() {
+            fetch('/get_graph')
+                .then(response => response.json())
+                .then(data => {
+                    const positions = network ? network.getPositions() : {};
+                    const existingNodes = nodes ? nodes.get() : [];
+                    const existingEdges = edges ? edges.get() : [];
+
+                    // 初始化或更新節點與邊
+                    if (!nodes || !edges) {
+                        nodes = new vis.DataSet(
+                            data.nodes.map(node => ({
+                                id: node.id,
+                                label: node.attributes?.name || `Unnamed (${node.id})`, // 顯示 name
+                                ...node // 保留其他屬性
+                            }))
+                        );
+
+                        edges = new vis.DataSet(
+                            data.edges.map(edge => ({
+                                id: edge.id,
+                                from: edge.from,
+                                to: edge.to,
+                                label: edge.attributes?.name || '', // 顯示 name
+                                ...edge // 保留其他屬性
+                            }))
+                        );
+                    } else {
+                        // 更新節點資料
+                        nodes.clear();
+                        data.nodes.forEach(node => {
+                            const position = positions[node.id];
+                            if (position) {
+                                node.x = position.x;
+                                node.y = position.y;
+                            }
+                            nodes.add({
+                                id: node.id,
+                                label: node.attributes?.name || `Unnamed (${node.id})`, // 顯示 name
+                                ...node
+                            });
+                        });
+
+                        // 更新邊資料
+                        edges.clear();
+                        data.edges.forEach(edge => {
+                            edges.add({
+                                id: edge.id,
+                                from: edge.from,
+                                to: edge.to,
+                                label: edge.attributes?.name || '', // 顯示 name
+                                ...edge
+                            });
+                        });
+                    }
+
+                    const options = {
+                        physics: { enabled: false }, // 關閉物理模擬，保持固定佈局
+                        nodes: {
+                            shape: 'dot',
+                            size: 25,
+                            font: { size: 14, color: '#000', face: 'Arial' },
+                            color: {
+                                background: '#007bff',
+                                border: '#0056b3',
+                                highlight: {
+                                    background: '#ff7f50',
+                                    border: '#ff4500'
+                                }
+                            }
+                        },
+                        edges: {
+                            smooth: {
+                                enabled: true,
+                                type: 'curvedCW', // 或 curvedCW
+                                roundness: Math.random() * 0.05 // 動態調整曲率
+                                // enabled: 開啟或關閉平滑效果（曲線）。
+                                // type:
+                                //     dynamic: 動態調整曲線類型。
+                                //     continuous: 曲線為連續圓滑曲線。
+                                //     curvedCW: 順時針方向的固定曲線。
+                                //     curvedCCW: 逆時針方向的固定曲線。
+                                // roundness:
+                                //     曲線的圓滑程度。
+                                //     0 表示完全直線，1 表示最大曲率。
+                            },
+                            arrows: { to: { enabled: true, scaleFactor: 1.2 } },
+                            color: {
+                                color: '#848484',
+                                highlight: '#ff4500'
+                            },
+                            width: 2
+                        },
+                        interaction: { dragNodes: true, zoomView: true, dragView: true }
+                    };
+
+                    // 初始化或更新圖譜
+                    if (!network) {
+                        network = new vis.Network(container, { nodes: nodes, edges: edges }, options);
+                    } else {
+                        network.setData({ nodes: nodes, edges: edges });
+
+                        // 恢復節點位置
+                        Object.keys(positions).forEach(nodeId => {
+                            if (nodes.get(nodeId)) {
+                                network.moveNode(nodeId, positions[nodeId].x, positions[nodeId].y);
+                            }
+                        });
+                    }
+
+                    // 事件處理
+                    let selectedNode = null;
+                    let selectedEdge = null;
+
+                    // 點擊節點事件
+                    network.on('selectNode', function (params) {
+                        clearAllNodeStyles()
+                        if (params.nodes.length > 0) {
+                            selectedNode = params.nodes[0];
+                            selectedEdge = null; // 清除選中的邊
+                            clearAll(); // 清空顯示面板
+
+                            // 獲取節點相關資訊並渲染
+                            fetchNodeProperties(selectedNode);
+                            highlightConnectedEdges(selectedNode); // 高亮相關邊
+                        }
+                    });
+
+                    // 點擊邊事件
+                    network.on('selectEdge', function (params) {
+                        clearAllEdgeStyles()
+                        if (params.edges.length > 0 && !selectedNode) { // 只有當未選中節點時才處理邊
+                            selectedEdge = params.edges[0];
+                            clearAll(); // 清空顯示面板
+
+                            // 獲取邊相關資訊並渲染
+                            fetch('/query_edge', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ relationship_id: selectedEdge })
+                            })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.status === 'success') {
+                                        renderEdgeProperties(data.edge); // 渲染邊訊息
+                                    } else {
+                                        alert(data.message); // 顯示錯誤訊息
+                                    }
+                                });
+                        }
+                    });
+
+                    // 取消選擇節點事件
+                    network.on('deselectNode', function () {
+                        clearAllNodeStyles()
+                        selectedNode = null;
+                        clearAll(); // 清空顯示面板
+                        resetEdgeColors(); // 還原所有邊的顏色
+                    });
+
+                    // 取消選擇邊事件
+                    network.on('deselectEdge', function () {
+                        clearAllEdgeStyles()
+                        selectedEdge = null;
+                        clearAll(); // 清空顯示面板
+                        resetEdgeColors(); // 還原所有邊的顏色
+                    });
+                })
+                .catch(error => {
+                    alert(刷新圖譜失敗);
+                });
+        }
+
+        function clearAllNodeStyles() {
+            const allNodes = network.body.data.nodes.get();
+            const updatedNodes = allNodes.map(node => ({
+                id: node.id,
+                color: {
+                    background: '#007bff',
+                    border: '#0056b3',
+                }
+            }));
+            network.body.data.nodes.update(updatedNodes);
+        }
+
+        function clearAllEdgeStyles() {
+            const allEdges = network.body.data.edges.get();
+            const updatedEdges = allEdges.map(edge => ({
+                id: edge.id,
+                color: {
+                    color: '#848484'
+                }
+            }));
+            network.body.data.edges.update(updatedEdges);
+        }
+
+        function highlightConnectedEdges(nodeId) {
+            edges.forEach(edge => {
+                if (edge.from === nodeId || edge.to === nodeId) {
+                    edges.update({ id: edge.id, color: { color: '#ff4500' } }); // 高亮邊
+                } else {
+                    edges.update({ id: edge.id, color: { color: '#848484' } }); // 還原其他邊
+                }
+            });
+        }
+
+        function resetEdgeColors() {
+            edges.forEach(edge => {
+                edges.update({ id: edge.id, color: { color: '#848484' } }); // 還原所有邊的顏色
+            });
+        }
+
+        function fetchNodeProperties(nodeId) {
+            fetch('/query_node', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ node_id: nodeId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    renderNodeProperties(data.node); // 渲染節點訊息
+                }
+            });
+        }
+
+        function fetchEdgeProperties(edgeId) {
+            fetch('/query_edge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ relationship_id: edgeId })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        renderEdgeProperties(data.edge); // 使用現有的函數渲染邊的屬性
+                    } else {
+                        alert(`無法獲取邊屬性: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    alert(`獲取邊屬性失敗: ${error.message}`);
+                });
+        }
+
+        function renderNodeProperties(node) {
+            // 節點屬性
+            let propertiesContent = `
+            <div class="node-properties-container">
+                <h4 class="node-properties-title">節點屬性</h4>
+                <table class="node-properties-table">
+                    <thead>
+                        <tr>
+                            <th>屬性名稱</th>
+                            <th>屬性內容</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+            for (let key in node.properties) {
+                propertiesContent += `
+                    <tr>
+                        <td class="property-name">${key}</td>
+                        <td class="property-value">
+                            <input type="text" id="nodeProperty_${node.id}_${key}" value="${node.properties[key]}" />
+                        </td>
+                        <td class="property-action">
+                            <button class="update-button" onclick="updateNodeProperty(${node.id}, '${key}')">更新</button>
+                            <button class="delete-button" onclick="deleteNodeProperty(${node.id}, '${key}')">刪除</button>
+                        </td>
+                    </tr>`;
+            }
+            propertiesContent += `
+                    </tbody>
+                </table>
+            </div>`;
+
+            // 節點標籤
+            let labelsContent = `
+            <div class="node-labels-container">
+                <h4 class="node-labels-title">節點標籤</h4>
+                <table class="node-labels-table">
+                    <thead>
+                        <tr>
+                            <th>標籤</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+            node.labels.forEach((label, index) => {
+                labelsContent += `
+                    <tr>
+                        <td class="label-name">
+                            <input type="text" id="nodeLabel_${node.id}_${index}" value="${label}" />
+                        </td>
+                        <td class="label-action">
+                            <button class="update-button" onclick="updateNodeLabel(${node.id}, ${index})">更新</button>
+                        </td>
+                    </tr>`;
+            });
+            labelsContent += `
+                    </tbody>
+                </table>
+            </div>`;
+
+            // 連近來的關係
+            let incomingRelationsContent = `
+            <div class="relations-container">
+                <h4 class="relations-title">連進來的關係</h4>
+                <table class="relations-table">
+                    <thead>
+                        <tr>
+                            <th>來源節點</th>
+                            <th>關係名稱</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+            edges.forEach(edge => {
+                if (edge.to === node.id) {
+                    incomingRelationsContent += `
+                        <tr>
+                            <td class="relation-node">${nodes.get(edge.from).label}</td>
+                            <td class="relation-label">
+                                <input type="text" id="relationLabel_${edge.id}" value="${edge.label}" />
+                            </td>
+                            <td class="relation-action">
+                                <button class="update-button" onclick="updateRelationship('${edge.id}')">更新</button>
+                            </td>
+                        </tr>`;
+                }
+            });
+            incomingRelationsContent += `
+                    </tbody>
+                </table>
+            </div>`;
+
+            // 連出去的關係
+            let outgoingRelationsContent = `
+            <div class="relations-container">
+                <h4 class="relations-title">連出去的關係</h4>
+                <table class="relations-table">
+                    <thead>
+                        <tr>
+                            <th>目標節點</th>
+                            <th>關係名稱</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+            edges.forEach(edge => {
+                if (edge.from === node.id) {
+                    outgoingRelationsContent += `
+                        <tr>
+                            <td class="relation-node">${nodes.get(edge.to).label}</td>
+                            <td class="relation-label">
+                                <input type="text" id="relationLabel_${edge.id}" value="${edge.label}" />
+                            </td>
+                            <td class="relation-action">
+                                <button class="update-button" onclick="updateRelationship('${edge.id}')">更新</button>
+                                
+                            </td>
+                        </tr>`;
+                }
+            });
+            outgoingRelationsContent += `
+                    </tbody>
+                </table>
+            </div>`;
+
+            // 組合內容
+            let nodeIdContent = `<div class="edge-id-container"><strong>節點 ID : </strong>${node.id}</div>`;
+            sidebar.innerHTML = nodeIdContent + propertiesContent + labelsContent + incomingRelationsContent + outgoingRelationsContent;
+        }
+
+        // function renderRelatedEdges(nodeId) {
+        //     // 渲染與選中節點相關的連入和連出關係
+        //     let incomingContent = '<h4>連進來的關係：</h4><table><tr><th>來源節點</th><th>關係名稱</th><th>操作</th></tr>';
+        //     let outgoingContent = '<h4>連出去的關係：</h4><table><tr><th>目標節點</th><th>關係名稱</th><th>操作</th></tr>';
+
+        //     edges.forEach(edge => {
+        //         if (edge.to === nodeId) {
+        //             incomingContent += `<tr>
+        //                 <td>${nodes.get(edge.from).label}</td>
+        //                 <td><input type="text" id="relationLabel_${edge.id}" value="${edge.label}" /></td>
+        //                 <td><button class="btn-blue-small" onclick="updateRelationship('${edge.id}')">更新</button></td>
+        //             </tr>`;
+        //         } else if (edge.from === nodeId) {
+        //             outgoingContent += `<tr>
+        //                 <td>${nodes.get(edge.to).label}</td>
+        //                 <td><input type="text" id="relationLabel_${edge.id}" value="${edge.label}" /></td>
+        //                 <td><button class="btn-blue-small" onclick="updateRelationship('${edge.id}')">更新</button></td>
+        //             </tr>`;
+        //         }
+        //     });
+
+        //     incomingContent += '</table>';
+        //     outgoingContent += '</table>';
+
+        //     relationListIncoming.innerHTML = incomingContent;
+        //     relationListOutgoing.innerHTML = outgoingContent;
+        // }
+
+        function renderEdgeProperties(edge) {
+            const edgeInfoContent = `
+            <div class="edge-id-container">
+                <strong>關係 ID : </strong>${edge.id}
+            </div>`;
+            // 關係屬性
+            let propertiesContent = `
+            <div class="edge-properties-container">
+                <h4 class="edge-properties-title">關係屬性</h4>
+                <table class="node-properties-table">
+                    <thead>
+                        <tr>
+                            <th>屬性名稱</th>
+                            <th>屬性內容</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+            for (let key in edge.properties) {
+                propertiesContent += `
+                    <tr>
+                        <td class="property-name">${key}</td>
+                        <td class="property-value">
+                            <input type="text" id="edgeProperty_${edge.id}_${key}" value="${edge.properties[key]}" />
+                        </td>
+                        <td class="property-action">
+                            <button class="update-button" onclick="updateEdgeProperty('${edge.id}', '${key}')">更新</button>
+                            <!-- 新增刪除按鈕 -->
+                            <button class="delete-button" onclick="deleteEdgeProperty('${edge.id}', '${key}')">刪除</button>
+                        </td>
+                    </tr>`;
+            }
+            propertiesContent += `
+                    </tbody>
+                </table>
+            </div>`;
+
+            // 關係類型（只讀）
+            const labelContent = `
+            <div class="edge-label-container">
+                <h4 class="edge-label-title">關係類型 (禁止編輯)</h4>
+                <table class="edge-label-table">
+                    <thead>
+                        <tr>
+                            <th>標籤</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="label-name">
+                                <input type="text" id="edgeLabel_${edge.id}" value="${edge.label}" readonly />
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>`;
+
+            sidebar.innerHTML = edgeInfoContent + propertiesContent + labelContent;
+        }
+
+        function updateEdgeProperty(edgeId, propertyKey) {
+            const newValue = document.getElementById(`edgeProperty_${edgeId}_${propertyKey}`).value;
+
+            if (!confirm(`確定要將屬性 "${propertyKey}" 更新為 "${newValue}" 嗎？`)) {
+                return;
+            }
+
+            const properties = { [propertyKey]: newValue };
+
+            fetch('/update_edge_properties', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ relationship_id: edgeId, relationship_properties: properties })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('屬性更新成功');
+                        refreshGraph();
+                    } else {
+                        alert(`屬性更新失敗: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    alert(`更新失敗: ${error.message}`);
+                });
+        }
+
+        // 刪除節點屬性
+        function deleteNodeProperty(nodeId, propertyKey) {
+            if (confirm(`確定要刪除屬性 "${propertyKey}" 嗎？`)) {
+                fetch('/delete_node_property', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ node_id: nodeId, property_key: propertyKey })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('屬性刪除成功');
+                        fetchNodeProperties(nodeId); // 刷新左側節點屬性資料
+                    } else {
+                        alert(`屬性刪除失敗: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    alert(`刪除屬性失敗: ${error.message}`);
+                });
+            }
+        }
+
+        // 刪除邊屬性
+        function deleteEdgeProperty(edgeId, propertyKey) {
+            if (confirm(`確定要刪除屬性 "${propertyKey}" 嗎？`)) {
+                fetch('/delete_edge_property', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ edge_id: edgeId, property_key: propertyKey })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            alert('屬性刪除成功');
+                            fetchEdgeProperties(edgeId); // 刷新邊的屬性資料
+                        } else {
+                            alert(`屬性刪除失敗: ${data.message}`);
+                        }
+                    })
+                    .catch(error => {
+                        alert(`刪除請求失敗: ${error.message}`);
+                    });
+            }
+        }
+
+        //刪除節點標籤
+        // function deleteNodeLabel(nodeId, labelName) {
+        //     if (confirm(`確定要刪除標籤 "${labelName}" 嗎？`)) {
+        //         fetch('/delete_node_label', {
+        //             method: 'POST',
+        //             headers: { 'Content-Type': 'application/json' },
+        //             body: JSON.stringify({ node_id: nodeId, label: labelName }) // 傳遞標籤名稱
+        //         })
+        //             .then(response => response.json())
+        //             .then(data => {
+        //                 if (data.status === 'success') {
+        //                     alert(`標籤 ${labelName} 已刪除`);
+        //                     refreshGraph(); // 刪除成功後刷新圖譜
+        //                 } else {
+        //                     alert(`刪除標籤失敗: ${data.message}`);
+        //                 }
+        //             })
+        //             .catch(error => {
+        //                 alert(`刪除標籤過程出錯: ${error.message}`);
+        //             });
+        //     }
+        // }
+
+        // 刪除節點
+        function deleteNode(nodeId) {
+            if (confirm(`確定要刪除節點 ID: "${nodeId}" 嗎？此操作將刪除節點及其所有相關邊。`)) {
+                fetch('/delete_node', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ node_id: nodeId })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('節點刪除成功');
+                        refreshGraph(); // 刷新整個圖譜
+                        clearAll(); // 清空左側資料
+                    } else {
+                        alert(`節點刪除失敗: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    alert(`刪除節點失敗: ${error.message}`);
+                });
+            }
+        }
+
+        // 刪除邊
+        function deleteEdge(edgeId) {
+            if (confirm(`確定要刪除邊 ID: "${edgeId}" 嗎？`)) {
+                fetch('/delete_edge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ relationship_id: edgeId })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('邊刪除成功');
+                        refreshGraph(); // 刷新整個圖譜
+                        clearAll(); // 清空左側資料
+                    } else {
+                        alert(`邊刪除失敗: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    alert(`刪除邊失敗: ${error.message}`);
+                });
+            }
+        }
+
+        // function highlightNode(nodeId, isHighlighted) {
+        //     // 選中的節點
+        //     const color = isHighlighted ? '#ff7f50' : '#007bff';
+        //     nodes.update({ id: nodeId, color: { background: color } });
+        // }
+
+        // function highlightEdge(edgeId, isHighlighted) {
+        //     // 選中的邊
+        //     const color = isHighlighted ? '#ff7f50' : '#848484';
+        //     edges.update({ id: edgeId, color: { color: color } });
+        // }
+
+        function clearAll() {
+            // 清空左側面板和關係列表
+            sidebar.innerHTML = '';
+            network.innerHTML = '';
+            relationListIncoming.innerHTML = '';
+            relationListOutgoing.innerHTML = '';
+        }
+
+//<---編輯資料--->
+        function updateNode(nodeId) {
+            // 更新節點的屬性，並同步到後端
+            let properties = {};
+            document.querySelectorAll(`[id^='nodeProperty_']`).forEach(input => {
+                const key = input.id.replace('nodeProperty_', '');
+                properties[key] = input.value;
+            });
+            fetch('/update_node', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ node_id: nodeId, node_properties: properties })
+            }).then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    nodes.update({ id: nodeId, label: properties.name || nodes.get(nodeId).label });
+                }
+            });
+        }
+
+        function updateNodeProperty(nodeId, propertyKey) {
+            const newValue = document.getElementById(`nodeProperty_${nodeId}_${propertyKey}`).value;
+            const properties = { [propertyKey]: newValue };
+
+            fetch('/update_node', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    node_id: nodeId,
+                    node_properties: properties
+                })
+            }).then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('屬性更新成功');
+                    nodes.update({ id: nodeId, label: properties.name || nodes.get(nodeId).label });
+                } else {
+                    alert(data.message);
+                }
+            });
+        }
+
+        function updateNodeLabel(nodeId, labelIndex) {
+            const newLabel = document.getElementById(`nodeLabel_${nodeId}_${labelIndex}`).value.trim();
+
+            // 驗證標籤格式
+            if (!newLabel.match(/^[\u4e00-\u9fff\w]+$/)) {
+                alert('標籤名稱只能包含中文、字母、數字和下劃線，請重新輸入！');
+                return;
+            }
+
+            fetch('/update_node_label', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ node_id: nodeId, label: newLabel })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('標籤更新成功');
+                        refreshGraph(); 
+                    } else {
+                        alert(`標籤更新失敗: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    alert(`更新標籤失敗: ${error.message}`);
+                });
+        }
+
+        function updateRelationship(edgeId) {
+            const newLabel = document.getElementById(`relationLabel_${edgeId}`).value;
+
+            // Prompt the user for confirmation
+            if (!confirm(`確定要將關係名稱更新為 "${newLabel}" 嗎？`)) {
+                return; // User canceled, do not proceed
+            }
+
+            fetch('/update_edge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ relationship_id: edgeId, relationship_name: newLabel })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('關係名稱更新成功');
+                        refreshGraph(); // Refresh the graph after successful update
+                    } else {
+                        alert(`關係名稱更新失敗: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    alert(`更新失敗: ${error.message}`);
+                });
+        }
+
+        function updateEdge(edgeId) {
+            // 更新邊的屬性，並同步到後端
+            const newLabel = document.getElementById(`relationshipType_${edgeId}`).value;
+            fetch('/update_edge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ relationship_id: edgeId, relationship_name: newLabel })
+            }).then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    edges.update({ id: edgeId, label: newLabel });
+                }
+            });
+        }
+
+        function deleteItem() {
+            const itemIdInput = document.getElementById('deleteItemId').value.trim();
+            const itemTypeInput = document.querySelector('input[name="deleteType"]:checked').value; // 'node' or 'relationship'
+
+            if (!itemIdInput || !itemTypeInput) {
+                alert('請輸入有效的 ID 並選擇類型');
+                return;
+            }
+
+            fetch('/delete_item', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: itemIdInput, type: itemTypeInput })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert(data.message);
+                        refreshGraph(); // 刷新圖譜
+                    } else {
+                        alert(`刪除失敗: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    alert(`刪除請求失敗: ${error.message}`);
+                });
+        }
+
+        function queryByName() {
+            const queryTerm = document.getElementById('queryByName').value;
+            fetch('/query_by_name', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query_term: queryTerm })
+            })
+            .then(response => response.json())
+            .then(data => {
+                updateGraph(data.nodes, data.edges);
+            });
+        }
+
+        function queryByRelationshipName() {
+            const relationshipName = document.getElementById('queryByRelationshipName').value.trim();
+
+            if (!relationshipName) {
+                alert('請輸入關係名稱');
+                return;
+            }
+
+            fetch('/query_by_relationship_name', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ relationship_name: relationshipName })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        updateGraph(data.nodes, data.edges);
+                    } else {
+                        alert(`查詢失敗: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    alert(`查詢過程出錯: ${error.message}`);
+                });
+        }
+
+        function countCharacters(textarea) {
+            const maxLength = 200;
+            const charCount = textarea.value.length;
+
+            // 更新字數顯示
+            document.getElementById('char_count').innerText = charCount;
+
+            // 如果超過最大字數限制，截斷輸入
+            if (charCount > maxLength) {
+                textarea.value = textarea.value.substring(0, maxLength);
+                document.getElementById('char_count').innerText = maxLength;
+            }
+        }
+
+        function expertContent() {
+            const sentence = document.getElementById('expert_content').value;
+
+            // 清空描述容器的內容
+            const descriptionContainer = document.getElementById('description-container');
+            descriptionContainer.innerHTML = ''; // 清空之前的描述
+
+            fetch('/expert_content', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sentence: sentence })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // 更新描述
+                data.descriptions.forEach(description => {
+                    const descElement = document.createElement('p');
+                    descElement.textContent = `- ${description}`;
+                    descriptionContainer.appendChild(descElement);
+                });
+                refreshGraph();
+                // 更新知識圖譜
+                //updateGraph(data.nodes, data.edges);
+            })
+            .catch(error => console.error('錯誤:', error));
+        }
+
+        function updateGraph(nodes, edges) {
+            // 更新知識圖譜視覺化
+            network.setData({ nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) });
+        }
+        // 初始化圖表
+        refreshGraph();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>專家編輯</title>
+</head>
+<body>
+    <h1>專家編輯頁面</h1>
+    <!-- 返回主畫面的按鈕 -->
+    <button onclick="location.href='/'">上一頁</button>
+
+    <!-- 輸入框 -->
+    <textarea id="input-text" rows="5" cols="50" placeholder="請輸入需要拆解的文本"></textarea>
+    <button onclick="analyzeText()">拆解需求</button>
+
+    <!-- 可編輯顯示框 -->
+    <div id="editable-box" contenteditable="true" style="border: 1px solid black; padding: 10px;">
+        這裡會顯示 GPT 拆解的需求...
+    </div>
+
+    <!-- 確認鍵 -->
+    <button onclick="submitRequirements()">確認</button>
+
+    <script>
+        async function analyzeText() {
+            const inputText = document.getElementById('input-text').value;
+            const response = await fetch('/api/analyze-text', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: inputText })
+            });
+            const result = await response.json();
+            if (result.error) {
+                alert(`錯誤：${result.error}`);
+            } else {
+                document.getElementById('editable-box').innerText = result.requirements.join('\n');
+            }
+        }
+
+        async function submitRequirements() {
+            const editedText = document.getElementById('editable-box').innerText.split('\n');
+            const response = await fetch('/api/submit-requirements', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ requirements: editedText })
+            });
+            const result = await response.json();
+            if (result.error) {
+                alert(`錯誤：${result.error}`);
+            } else {
+                alert(result.message);
+                location.href = '/'; // 提交成功後返回主畫面
+            }
+        }
+    </script>
+</body>
+</html>
