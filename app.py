@@ -1,13 +1,70 @@
-from quart import Quart, render_template, request, jsonify, websocket
+#from quart import redirect, Quart, render_template, request, jsonify, websocket, url_for, session
 from py2neo import Graph, ClientError
 from werkzeug.utils import secure_filename
 from openai import ChatCompletion
+from authlib.integrations.flask_client import OAuth  # 使用 Flask 集成
 import requests
 import os, re, uuid, openai, asyncio, aiohttp, json  
-import boto3  
+import boto3 ,jwt 
+from quart.sessions import SecureCookieSessionInterface
 
-app = Quart(__name__)
+from flask import Flask, redirect, url_for, session, render_template, jsonify, request
 
+app = Flask(__name__)
+app.secret_key = os.urandom(24)  # Use a secure random key in production
+oauth = OAuth(app)
+
+oauth.register(
+  name='oidc',
+  authority='https://cognito-idp.us-east-1.amazonaws.com/us-east-1_CnX5MNb7t',
+  client_id='64ucr6gt33a70vj3m62vmtithd',
+  client_secret='19nmvq1mm7tviq28odtik8tjvsvqghg4mg6u453dbje0hqqr2lk0',
+  server_metadata_url='https://cognito-idp.us-east-1.amazonaws.com/us-east-1_CnX5MNb7t/.well-known/openid-configuration',
+  client_kwargs={'scope': 'email openid phone'}
+)
+
+@app.route('/')
+def index():
+    user = session.get('user')
+    if user:
+        # 用戶已登入，渲染 index.html
+        return render_template('index.html', user=user)
+    else:
+        # 用戶未登入，顯示登入選項
+        return f'Welcome! Please <a href="/login">Login</a>.'
+
+@app.route('/login')
+def login():
+    # Alternate option to redirect to /authorize
+    # redirect_uri = url_for('authorize', _external=True)
+    # return oauth.oidc.authorize_redirect(redirect_uri)
+    return oauth.oidc.authorize_redirect('https://3.225.199.88:5000/authorize')
+
+@app.route('/authorize')
+def authorize():
+    try:
+        # 同步調用 OAuth 方法
+        token = oauth.oidc.authorize_access_token()
+        print(f"Token received: {token}")  # 調試用
+
+        # 同步調用 UserInfo Endpoint
+        userinfo = oauth.oidc.userinfo()
+        print(f"UserInfo received: {userinfo}")  # 調試用
+
+        # 將用戶信息存入 Session
+        session['user'] = userinfo
+
+        # 重定向到首頁
+        return redirect(url_for('index'))
+    except Exception as e:
+        print(f"授權失敗，錯誤訊息：{str(e)}")
+        return f"Authorization failed: {e}", 500
+
+
+@app.route('/logout')
+def logout():
+    session.pop('user', None)
+    return redirect(url_for('index'))
 
 # 連接到 Neo4j 資料庫
 
@@ -61,7 +118,7 @@ def read_from_s3_public(s3_url):
         print(f"讀取過程中出現錯誤：{e}")
         return None
     
-async def call_gpt_api(prompt):
+def call_gpt_api(prompt):
     """調用 GPT API 解析或生成內容"""
     headers = {
         "Authorization": f"Bearer {GPT_API_KEY}",
@@ -73,22 +130,21 @@ async def call_gpt_api(prompt):
         "max_tokens": 5000,
         "temperature": 0.5
     }
-    async with aiohttp.ClientSession() as session:
-        async with session.post(GPT_API_URL, headers=headers, json=payload) as response:
-            if response.status != 200:
-                raise Exception(f"GPT API 錯誤: {response.status}, {await response.text()}")
-            data = await response.json()
-            return data['choices'][0]['message']['content']
+    response = requests.post(GPT_API_URL, headers=headers, json=payload)
+    if response.status_code != 200:
+        raise Exception(f"GPT API 错误: {response.status_code}, {response.text}")
+    data = response.json()
+    return data['choices'][0]['message']['content']
 
 @app.route('/import_text', methods=['POST'])
-async def import_text():
+def import_text():
     """處理檔案上傳和知識圖譜構建"""
     try:
         # 檢查是否有上傳檔案
-        if 'file' not in (await request.files):
+        if 'file' not in (request.files):
             return jsonify({'status': 'error', 'message': '沒有檔案被上傳'})
 
-        file = (await request.files)['file']
+        file = (request.files)['file']
         if file.filename == '':
             return jsonify({'status': 'error', 'message': '未選擇檔案'})
 
@@ -101,14 +157,12 @@ async def import_text():
         filename = secure_filename(file.filename)
 
         # 上傳文件內容到 S3
-        s3_url = await asyncio.to_thread(
-            lambda: upload_to_s3_public(file.stream, bucket_name, filename)
-        )
+        s3_url = upload_to_s3_public(file.stream, bucket_name, filename)
         if not s3_url:
             return jsonify({'status': 'error', 'message': '檔案備份到 S3 失敗'}), 500
 
         # 從 S3 讀取文件內容
-        content = await asyncio.to_thread(read_from_s3_public, s3_url)
+        content = read_from_s3_public(s3_url)
         if not content:
             return jsonify({'status': 'error', 'message': '從 S3 讀取文件內容失敗'}), 500
 
@@ -181,7 +235,7 @@ async def import_text():
                         """
         
         print("正在調用 GPT 分解文本內容...")
-        parsed_data = await call_gpt_api(gpt_prompt)
+        parsed_data = call_gpt_api(gpt_prompt)
         # 過濾非法符號，例如去除 Markdown 標記
         parsed_data = parsed_data.strip().replace('```json', '').replace('```', '')
         # 將數據按行分割，移除所有空行，然後重新組合為完整字符串
@@ -321,15 +375,15 @@ async def import_text():
         # 捕獲所有異常並返回錯誤訊息
         return jsonify({'status': 'error', 'message': f'處理過程中出現錯誤: {str(e)}'})
     
-@app.route('/')
-async def index():
-    # 渲染主頁面 HTML
-    return await render_template('index.html')
+# @app.route('/')
+# async def index():
+#     # 渲染主頁面 HTML
+#     return await render_template('index.html')
 
 #<--- 完整內容 --->
 # 刪除所有資料
 @app.route('/delete_all_kg', methods=['DELETE'])
-async def delete_all_kg():
+def delete_all_kg():
     try:
         query = "MATCH (n) DETACH DELETE n"
         graph.run(query)
@@ -339,7 +393,7 @@ async def delete_all_kg():
 
 # 獲取整個知識圖譜的節點和邊資料
 @app.route('/get_graph', methods=['GET'])
-async def get_graph():
+def get_graph():
     query = """
         MATCH (n)
         OPTIONAL MATCH (n)-[r]->(m)
@@ -383,8 +437,8 @@ async def get_graph():
 
 # 更新節點的資料
 @app.route('/update_node', methods=['POST'])
-async def update_node():
-    data = await request.get_json()
+def update_node():
+    data = request.get_json()
     node_id = data.get('node_id')
     node_properties = data.get('node_properties')
 
@@ -398,8 +452,8 @@ async def update_node():
     return jsonify({'status': 'error', 'message': 'Missing node_id or properties'})
 
 @app.route('/update_node_label', methods=['POST'])
-async def update_node_label():
-    data = await request.get_json()
+def update_node_label():
+    data = request.get_json()
     node_id = data.get('node_id')
     new_label = data.get('label')
 
@@ -441,8 +495,8 @@ async def update_node_label():
 
 # 更新邊（關係）的資料
 @app.route('/update_edge', methods=['POST'])
-async def update_edge():
-    data = await request.get_json()
+def update_edge():
+    data = request.get_json()
     relationship_id = data.get('relationship_id')
     relationship_name = data.get('relationship_name')
 
@@ -463,11 +517,11 @@ async def update_edge():
 
 # 更新關係（邊）的屬性
 @app.route('/update_edge_properties', methods=['POST'])
-async def update_edge_properties():
+def update_edge_properties():
     """
     更新關係的屬性，不影響標籤。
     """
-    data = await request.get_json()
+    data = request.get_json()
     relationship_id = data.get('relationship_id')
     relationship_properties = data.get('relationship_properties')
 
@@ -487,8 +541,8 @@ async def update_edge_properties():
 
 # 新增節點
 @app.route('/add_node', methods=['POST'])
-async def add_node():
-    data = await request.get_json()
+def add_node():
+    data = request.get_json()
     properties = data.get('properties', {})
     
     # 預設屬性包含 "name"
@@ -504,22 +558,22 @@ async def add_node():
 
 # 新增節點和關係的 API，支援多種新增類型
 @app.route('/add_node_with_relationship', methods=['POST'])
-async def add_node_with_relationship():
-    data = await request.get_json()
+def add_node_with_relationship():
+    data = request.get_json()
     add_type = data.get("add_type")
     tx = graph.begin()  # 開啟 Transaction
 
     try:
         if add_type == "singleNode":
-            result = await add_single_node(tx, data)
+            result = add_single_node(tx, data)
         elif add_type == "existingRelation":
-            result = await add_existing_relation(tx, data)
+            result = add_existing_relation(tx, data)
         elif add_type == "newNodeRelationExisting":
-            result = await add_new_node_relation_existing(tx, data)
+            result = add_new_node_relation_existing(tx, data)
         elif add_type == "existingNodeRelationNew":
-            result = await add_existing_node_relation_new(tx, data)
+            result = add_existing_node_relation_new(tx, data)
         elif add_type == "newNodeRelationNew":
-            result = await add_new_node_relation_new(tx, data)
+            result = add_new_node_relation_new(tx, data)
         else:
             return jsonify({"status": "error", "message": "Invalid add type"})
 
@@ -530,7 +584,7 @@ async def add_node_with_relationship():
         return jsonify({"status": "error", "message": f"Transaction failed: {str(e)}"})
 
 # 新增單一新節點
-async def add_single_node(tx, data):
+def add_single_node(tx, data):
     labels = data.get("labels", [])
     properties = data.get("properties", {})
 
@@ -548,7 +602,7 @@ async def add_single_node(tx, data):
         return jsonify({"status": "error", "message": f"Error: {str(e)}"})
 
 # 新增新關係（已存在的節點）
-async def add_existing_relation(tx, data):
+def add_existing_relation(tx, data):
     head_id = data.get("head_id")
     tail_id = data.get("tail_id")
     relation_label = data.get("relation_label")  # 單一關係標籤
@@ -585,7 +639,7 @@ async def add_existing_relation(tx, data):
         return jsonify({"status": "error", "message": f"Error: {str(e)}"})
 
 # 新增新節點與新關係到現有節點
-async def add_new_node_relation_existing(tx, data):
+def add_new_node_relation_existing(tx, data):
     existing_node_id = data.get("existing_node_id")
     new_node_labels = data.get("new_node_labels", [])
     new_node_properties = data.get("new_node_properties", {})
@@ -607,7 +661,7 @@ async def add_new_node_relation_existing(tx, data):
     return jsonify({'status': 'success', 'new_node_id': new_node_id, 'relationship_id': relationship_result[0]['relationship_id']})
 
 # 新增現有節點與新關係到新節點
-async def add_existing_node_relation_new(tx, data):
+def add_existing_node_relation_new(tx, data):
     existing_node_id = data.get("existing_node_id")
     new_node_labels = data.get("new_node_labels", [])
     new_node_properties = data.get("new_node_properties", {})
@@ -629,7 +683,7 @@ async def add_existing_node_relation_new(tx, data):
     return jsonify({'status': 'success', 'new_node_id': new_node_id, 'relationship_id': relationship_result[0]['relationship_id']})
 
 # 新增新節點與新關係到新節點
-async def add_new_node_relation_new(tx, data):
+def add_new_node_relation_new(tx, data):
     head_labels = data.get("head_labels", [])
     head_properties = data.get("head_properties", {})
     tail_labels = data.get("tail_labels", [])
@@ -679,8 +733,8 @@ async def add_new_node_relation_new(tx, data):
 #         return jsonify({'status': 'error', 'message': f'刪除失敗: {str(e)}'})
 
 @app.route('/delete_item', methods=['POST'])
-async def delete_item():
-    data = await request.get_json()
+def delete_item():
+    data = request.get_json()
     item_id = data.get('id')
     item_type = data.get('type')  # 'node' or 'relationship'
 
@@ -721,8 +775,8 @@ async def delete_item():
         return jsonify({'status': 'error', 'message': f'刪除過程出錯: {str(e)}'})
 
 @app.route('/delete_node_property', methods=['POST'])
-async def delete_node_property():
-    data = await request.get_json()
+def delete_node_property():
+    data = request.get_json()
     node_id = data.get('node_id')
     property_key = data.get('property_key')
 
@@ -741,8 +795,8 @@ async def delete_node_property():
         return jsonify({'status': 'error', 'message': f'刪除屬性失敗: {str(e)}'})
 
 @app.route('/delete_edge_property', methods=['POST'])
-async def delete_edge_property():
-    data = await request.get_json()
+def delete_edge_property():
+    data = request.get_json()
     edge_id = data.get('edge_id')
     property_key = data.get('property_key')
 
@@ -761,8 +815,8 @@ async def delete_edge_property():
         return jsonify({'status': 'error', 'message': f'刪除屬性失敗: {str(e)}'})
 
 @app.route('/delete_node', methods=['POST'])
-async def delete_node():
-    data = await request.get_json()
+def delete_node():
+    data = request.get_json()
     node_id = data.get('node_id')
 
     if not node_id:
@@ -779,8 +833,8 @@ async def delete_node():
         return jsonify({'status': 'error', 'message': f'刪除節點失敗: {str(e)}'})
 
 @app.route('/delete_edge', methods=['POST'])
-async def delete_edge():
-    data = await request.get_json()
+def delete_edge():
+    data = request.get_json()
     relationship_id = data.get('relationship_id')
 
     if relationship_id is None:
@@ -797,11 +851,11 @@ async def delete_edge():
         return jsonify({'status': 'error', 'message': f'刪除邊失敗: {str(e)}'})
 
 @app.route('/delete_node_label', methods=['POST'])
-async def delete_node_label():
+def delete_node_label():
     """
     刪除節點標籤資料 (type(r))。
     """
-    data = await request.get_json()
+    data = request.get_json()
     node_id = data.get('node_id')  # 節點 ID
     label_name = data.get('label')  # 標籤名稱（要刪除的 type(r)）
 
@@ -822,8 +876,8 @@ async def delete_node_label():
 
 # 查找節點資訊
 @app.route('/query_node', methods=['POST'])
-async def query_node():
-    data = await request.get_json()
+def query_node():
+    data = request.get_json()
     node_id = data.get('node_id')
 
     # 查找節點及其屬性
@@ -844,8 +898,8 @@ async def query_node():
         return jsonify({'status': 'error', 'message': 'Node not found'})
 
 @app.route('/query_edge', methods=['POST'])
-async def query_edge():
-    data = await request.get_json()
+def query_edge():
+    data = request.get_json()
     relationship_id = data.get('relationship_id')
 
     if relationship_id is None:
@@ -878,8 +932,8 @@ async def query_edge():
         return jsonify({'status': 'error', 'message': f'Failed to fetch edge: {str(e)}'})
 
 @app.route('/query_by_relationship_name', methods=['POST'])
-async def query_by_relationship_name():
-    data = await request.get_json()
+def query_by_relationship_name():
+    data = request.get_json()
     relationship_name = data.get('relationship_name', '').strip()
 
     if not relationship_name:
@@ -901,8 +955,8 @@ async def query_by_relationship_name():
         return jsonify({'status': 'error', 'message': f'查詢失敗: {str(e)}'})
 
 @app.route('/query_by_name', methods=['POST'])
-async def query_by_name():
-    data = await request.get_json()
+def query_by_name():
+    data = request.get_json()
     query_term = data.get('query_term')
 
     # 根據節點或關係名稱進行查詢
@@ -974,5 +1028,5 @@ if __name__ == "__main__":
     public_ip = "3.225.199.88"  # 替換為您的彈性 IP 地址(固定的公有IP)
 
     # 打印應用運行的 URL
-    print(f"Running on: http://{public_ip}:5000")
-    app.run(host="0.0.0.0", port=5000)
+    print(f"Running on: https://{public_ip}:5000")
+    app.run(debug=True,host="0.0.0.0", port=5000, ssl_context=('cert.pem', 'key.pem'))
